@@ -22,11 +22,10 @@ classdef Edge < handle
    properties (Constant) % can only be changed here in the def file
       %set max laser current using laser.Write_Command(['w67 ' num2str(laser.CURRENT_SAFETY_LIMIT)])
       CURRENT_SAFETY_LIMIT = 60; %[A], not possible to set higher laser current
-      COM_PORT = 'COM5'; % com port of diode laser ("USB Serial Port" in Device manager)
       READ_ERROR_WAIT = 5; % time in seconds to re-read laser error after clearing
    end
 
-   properties (Constant,Access=private) % can't be changed, can't be seen
+   properties (Constant, Access = private) % can't be changed, can't be seen
       BAUD_RATE = 57600;  % BaudRate as bits per second
       TERMINATOR = 'CR/LF'; % carriage return + linefeed termination
       TIME_OUT = 2 ; %[s], serial port communication timenout
@@ -41,6 +40,7 @@ classdef Edge < handle
    end
 
    properties (SetAccess=private) % can be seen but not set by user
+      COM_PORT = 'COM5'; % com port of diode laser ("USB Serial Port" in Device manager)
       SerialObj; % serial port object, required for Matlab to laser comm.
       ConnectionStatus = 'Connection Closed';  % Connection stored as text
       isConnected = 0; % Connection stored as logical
@@ -73,14 +73,30 @@ classdef Edge < handle
    methods
       % constructor, called when class is created
       function Edge = Edge(doConnect)
+
         % constructor, called when creating instance of this class
         if nargin == 0
           doConnect = Edge.CONNECT_ON_STARTUP; % use default setting
         end
 
+        % try to read serial port from file
+        if isfile(get_path('com_file'))
+          load(get_path('com_file'), 'port_edge');
+          Edge.COM_PORT = port_edge;
+        else % file does not exist, we need to search for com port
+          Edge.Find_Com_Port();
+        end
+
         % auto connect on creation?
         if doConnect
-          Edge.Open_Connection();
+          % try to connect to edge
+          try
+            Edge.Open_Connection();
+          catch ME % if not working, Fin_Com_Port and retry
+            Edge.Find_Com_Port();
+            Edge.Open_Connection();
+          end
+
         else
           fprintf(Edge.outTarget,'[Edge] Initialized but not connected yet.\n');
         end
