@@ -26,7 +26,7 @@ function [] = Open_Connection(laser)
    fopen(laser.SerialObj); % Connect to laser
 
    laser.SerialNumber = Read_Command(laser,'r01');
-   isCorrectLaser = strcmp(laser.SerialNumber,'S/N:1639');
+   isCorrectLaser = strcmp(laser.SerialNumber,'S/N:1639') || strcmp(laser.SerialNumber,'S/N:1631');
    connectionIsOpen = strcmp(laser.SerialObj.Status,'open');
    if (connectionIsOpen && isCorrectLaser)
       laser.ConnectionStatus = 'Connected';

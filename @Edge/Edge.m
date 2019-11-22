@@ -7,16 +7,16 @@ classdef Edge < handle
    % be renamed to DominateLaser or sth then....
 
    properties % default properties, probaly most of your data
-      WarmUpTime = 60; % [s], duration over which laser slowly warms up on start
-      CoolDownFactor = 0.75; % cool down time = WarmUpTime*CoolDownFactor
-      MaxWarmUpCurrent = 37; % [A], max current for warm up procedure
+      WarmUpTime(1,1) {mustBeFinite,mustBeNonnegative} = 60; % [s], duration over which laser slowly warms up on start
+      CoolDownFactor(1,1) {mustBeFinite,mustBeNonnegative} = 0.75; % cool down time = WarmUpTime*CoolDownFactor
+      MaxWarmUpCurrent(1,1) {mustBeFinite,mustBeNonnegative} = 33; % [A], max current for warm up procedure
 
       %% laser info
-      current double = 0; % [A], diode laser current, SET/GET
-      power double = 0; % [%], set laser power in percent rather than amps, to unify laser control
-      TriggerFrequency = 500; % trigger freq. for internal triggering, SET/GET
-      TriggerMode = 0; % 0 = internal, 1 = external, 2 = CW. SET/GET
-      isOn; % Edge.isOn = 1 turns on laser. SET/GET
+      current(1,1) {mustBeFinite,mustBeNonnegative} = 0; % [A], diode laser current, SET/GET
+      power(1,1) {mustBeFinite,mustBeNonnegative} = 0; % [%], set laser power in percent rather than amps, to unify laser control
+      TriggerFrequency(1,1) {mustBeInteger,mustBeNonnegative} = 500; % trigger freq. for internal triggering, SET/GET
+      TriggerMode(1,1) {mustBeInteger,mustBeNonnegative} = 0; % 0 = internal, 1 = external, 2 = CW. SET/GET
+      isOn(1,1); % Edge.isOn = 1 turns on laser. SET/GET
    end
 
    properties (Constant) % can only be changed here in the def file
@@ -155,7 +155,7 @@ classdef Edge < handle
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function set.power(laser, setPower)
         if isinf(setPower)
-          % little trick where we don't change the power when we set it to inf  
+          % little trick where we don't change the power when we set it to inf
         elseif setPower > 100 || setPower < 0
           error('Need to set power in percent (0-100%)!');
         else
