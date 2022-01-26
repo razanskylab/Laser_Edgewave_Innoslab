@@ -1,22 +1,29 @@
+% File: Edge.m @ Edge.m
+% Author: Johannes Rebling, Urs Hofmann
+% Mail: hofmannu@ethz.ch
+% Date: 05.11.2020
+
+% CAREFUL:
+%   this class is super buggy, don't use
+
+% Edge class which handles settings of the 532nm super stronk diode laser
+% Currently allows to connect to the laser, control laser current, trigger
+% frequencies, trigger mode, has Warm_Up and Cool_Down methods and can check
+% for errors.
+
 classdef Edge < handle
-   % Edge class which handles settings of the 532nm super stronk diode laser
-   % Currently allows to connect to the laser, control laser current, trigger
-   % frequencies, trigger mode, has Warm_Up and Cool_Down methods and can check
-   % for errors.
-   % ToDo: Implement wavelenght control for SIRAH laser as well...probalby should
-   % be renamed to DominateLaser or sth then....
+
 
    properties % default properties, probaly most of your data
       WarmUpTime(1,1) {mustBeFinite,mustBeNonnegative} = 60; % [s], duration over which laser slowly warms up on start
       CoolDownFactor(1,1) {mustBeFinite,mustBeNonnegative} = 0.75; % cool down time = WarmUpTime*CoolDownFactor
       MaxWarmUpCurrent(1,1) {mustBeFinite,mustBeNonnegative} = 33; % [A], max current for warm up procedure
-
-      %% laser info
       current(1,1) {mustBeFinite,mustBeNonnegative} = 0; % [A], diode laser current, SET/GET
       power(1,1) {mustBeFinite,mustBeNonnegative} = 0; % [%], set laser power in percent rather than amps, to unify laser control
       TriggerFrequency(1,1) {mustBeInteger,mustBeNonnegative} = 500; % trigger freq. for internal triggering, SET/GET
       TriggerMode(1,1) {mustBeInteger,mustBeNonnegative} = 0; % 0 = internal, 1 = external, 2 = CW. SET/GET
       isOn(1,1); % Edge.isOn = 1 turns on laser. SET/GET
+      COM_PORT(1, :) char = "COM5"; % com port of diode laser ("USB Serial Port" in Device manager)
    end
 
    properties (Constant) % can only be changed here in the def file
@@ -28,9 +35,9 @@ classdef Edge < handle
    properties (Constant, Access = private) % can't be changed, can't be seen
       BAUD_RATE = 57600;  % BaudRate as bits per second
       TERMINATOR = 'CR/LF'; % carriage return + linefeed termination
-      TIME_OUT = 2 ; %[s], serial port communication timenout
-      TRIG_LIMIT = [200 15000]; % min and max limits of trigger freq.
-      CONNECT_ON_STARTUP = true;
+      TIME_OUT(1, 1) single = 2 ; % [s], serial port communication timenout
+      TRIG_LIMIT = [200 15000]; % [Hz] min and max limits of trigger freq.
+      CONNECT_ON_STARTUP(1, 1) logical = 1;
    end
 
    properties (Dependent) %callulated based on other values
@@ -40,13 +47,9 @@ classdef Edge < handle
    end
 
    properties (SetAccess=private) % can be seen but not set by user
-      COM_PORT = 'COM5'; % com port of diode laser ("USB Serial Port" in Device manager)
       SerialObj; % serial port object, required for Matlab to laser comm.
-      ConnectionStatus = 'Connection Closed';  % Connection stored as text
-      isConnected = 0; % Connection stored as logical
-      WarmUpStatus = ['Requires warm up'... % WarmUpStatus stored as text
-       '(use Warm_Up method)'];
-      isWarmedUp = 0;
+      isConnected(1, 1) logical = 0; % Connection stored as logical
+      isWarmedUp(1, 1) logical = 0;
       Status = 'No On/Off information availabe, use Read_Status method!'; % ON/OFF status
       TriggerStatus = ['No trigger information'... % triggerstatus stored as text here
           'availabe, use Read_Status method!'];
@@ -56,9 +59,8 @@ classdef Edge < handle
    end
 
    % can't be seen or set by user, only by methods in this class
-   properties (Access=private)
-      SerialNumber; %used to check connection to correct device, i.e. laser
-      WarmUpInterval = 0.5; %[s], interval in which laser current is increased
+   properties (Access = private)
+      WarmUpInterval(1, 1) single = 0.5; %[s], interval in which laser current is increased
                            % during warm and up/cool procedures
    end
 
@@ -66,11 +68,18 @@ classdef Edge < handle
       outTarget = 1;
    end
 
+   properties (Dependent)
+      SerialNumber; %used to check connection to correct device, i.e. laser
+   end
+
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    %% "Standard" methods, i.e. functions which can be called by the user and by
    % the class itself
    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
    methods
+      % overview over functions declared in external files
+      Close_Connection(Laser);
+
       % constructor, called when class is created
       function Edge = Edge(doConnect)
 
@@ -78,36 +87,14 @@ classdef Edge < handle
         if nargin == 0
           doConnect = Edge.CONNECT_ON_STARTUP; % use default setting
         end
-
-        % try to read serial port from file
-        if isfile(get_path('com_file'))
-          load(get_path('com_file'), 'port_edge');
-          Edge.COM_PORT = port_edge;
-        else % file does not exist, we need to search for com port
-          Edge.Find_Com_Port();
-        end
-
-        % auto connect on creation?
-        if doConnect
-          % try to connect to edge
-          try
-            Edge.Open_Connection();
-          catch ME % if not working, Fin_Com_Port and retry
-            Edge.Find_Com_Port();
-            Edge.Open_Connection();
-          end
-
-        else
-          fprintf(Edge.outTarget,'[Edge] Initialized but not connected yet.\n');
-        end
+        Edge.COM_PORT = get_com_port('Edge');
+        Edge.Open_Connection('flagFail', 0);
       end
 
       % Destructor: Mainly used to close the serial connection correctly
       function delete(EL)
         % Close Serial connection
-        if EL.isConnected
-          EL.Close_Connection();
-        end
+        EL.Close_Connection();
       end
 
       % when saved, hand over only properties stored in saveObj
@@ -133,7 +120,6 @@ classdef Edge < handle
          end
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function set.current(laser, current)
          %saftey limit check
          if ((current > laser.CURRENT_SAFETY_LIMIT) || (current < 0))
@@ -152,7 +138,6 @@ classdef Edge < handle
          current = cell2mat(textscan(tempString,'%f'));
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function set.power(laser, setPower)
         if isinf(setPower)
           % little trick where we don't change the power when we set it to inf
@@ -171,7 +156,6 @@ classdef Edge < handle
         power = current./laser.CURRENT_SAFETY_LIMIT.*100;
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function set.TriggerFrequency(laser, frequency)
          %saftey limit check
          if ((frequency < laser.TRIG_LIMIT(1)) || (frequency > laser.TRIG_LIMIT(2)))
@@ -182,7 +166,6 @@ classdef Edge < handle
          laser.TriggerFrequency = frequency;
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function triggerFrequency = get.TriggerFrequency(laser)
          % read laser trigger frequency from laser
          tempString = laser.Read_Command('r73');
@@ -192,7 +175,6 @@ classdef Edge < handle
          triggerFrequency = str2num(cell2mat(tempCell));
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       function set.TriggerMode(laser, triggerMode)
          % If internal Trigger mode is activated a trigger signal
          % is generated internal and used for trigger
@@ -225,8 +207,7 @@ classdef Edge < handle
          triggerMode = -1;
       end
 
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      function set.isOn(laser,laserOn)
+      function set.isOn(laser, laserOn)
          % turn laser on/off when setting the Edge.isOn property
          if (laserOn) % turn on the laser
             % check for laser errors
@@ -259,6 +240,11 @@ classdef Edge < handle
          % check if laser is on and set laser.status
          status = laser.isOn;
       end
+
+      % returns the serial number of the laser
+      function SerialNumber = get.SerialNumber(laser)
+         SerialNumber = laser.Read_Command('r01'); 
+      end
    end
 
 
@@ -271,8 +257,8 @@ classdef Edge < handle
          % send a command to the laser and return the answer string
          % possible commands:
          % r01 = ask for SN of laser
-         fprintf(laser.SerialObj,'%s\n',command);
-         laserAnswer = fscanf(laser.SerialObj,'%s\n');
+         writeline(laser.SerialObj, command);
+         laserAnswer = readline(laser.SerialObj);
       end
 
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -282,35 +268,13 @@ classdef Edge < handle
          % w60 0/1 - Laser on/off
          % w61 0-50 - Laser driving current
          % w67 0-60 - set upper laser current limit
-         fprintf(laser.SerialObj,'%s\n',command);
-         returnMessage = fscanf(laser.SerialObj,'%s\n');
+         writeline(laser.SerialObj, command);
+         returnMessage = readline(laser.SerialObj);
          if ~strcmp(returnMessage,'OK')
             warning('Writing laser command failed!');
             fprintf(['Laser Message was: "' returnMessage '"\n']);
          end
       end
-   end
-
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   %% Private Get Access methods, i.e. they can be called by the user but
-   % only if the use knows they exist and knows their name
-   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   methods(Hidden)
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%       function [] = Set_Pulse_Energy(laser)
-%          %% for later, when have an automatic power calibration
-%       end
-
-   end
-
-   %static methods %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-   % These methods do not perform operations on individual objects of a
-   % class and, therefore, do not require an instance of the class as an
-   % input argument, like ordinary methods
-   methods(Static)
-      % function p = Get_Pi(tol)
-      %    p = 0;
-      % end
    end
 
 end

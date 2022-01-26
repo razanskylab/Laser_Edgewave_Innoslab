@@ -1,12 +1,4 @@
-% [] = Warm_Up(laser, doCoolDown, warmUpTime, maxWarmUpCurrent)
-% connect, check for errors, turn on laser and slowly increase current
-% Uses default time and current values if none are given
-% Performs cool down from current laser current value if doCoolDown=1
-% trigger mode for warm up is internal, for cool down external, the
-% trigger modes present in the laser at the time of warmUp/coolDown
-% are restored afterwards.
 
-% is located, kinda like include in C...
 
 function [] = Warm_Up(laser, doCoolDown, warmUpTime, maxWarmUpCurrent)
 
@@ -17,79 +9,81 @@ function [] = Warm_Up(laser, doCoolDown, warmUpTime, maxWarmUpCurrent)
       doCoolDown = 0; % don't cool down per default
    end
 
-   laser.Read_Error; %make sure all is good before warming up
+   laser.Read_Error(); %make sure all is good before warming up
    % laser.Display_Status; %get latest current and trigger values
 
    % calc steps and current values based on time and nSteps
    if ~doCoolDown % do warm up, i.e. don't do cool down duh
-      if (laser.current>=laser.MaxWarmUpCurrent-2)
+      if (laser.current >= laser.MaxWarmUpCurrent)
          fprintf(['[Edge] Laser current (' sprintf('%2.1f A',laser.current) ...
             ') already at or above warmUpCurrent ('...
             sprintf('%2.1f A',laser.MaxWarmUpCurrent) ')!\n']);
          short_warn('[Edge] WarmUp cancled');
          return;
       end
-      nWarmUpSteps = laser.WarmUpTime/laser.WarmUpInterval;
-      currentStepSize = laser.MaxWarmUpCurrent/nWarmUpSteps;
+      nWarmUpSteps = laser.WarmUpTime / laser.WarmUpInterval;
+      currentStepSize = laser.MaxWarmUpCurrent / nWarmUpSteps;
       % warm up from present current setting in laser
       currentSteps = laser.current:currentStepSize:laser.MaxWarmUpCurrent;
-      currentSteps = round(currentSteps*10)/10; %round to one digit
+      currentSteps = round(currentSteps * 10) / 10; %round to one digit
       fprintf('[Edge] Warming Up Laser to %2.1fA\n',laser.MaxWarmUpCurrent);
       laser.isOn = 1; % turn laser on if not already on!
-      laser.TriggerMode = 1; %make sure we are at exterTrigger
+      laser.TriggerMode = 1; % make sure we are at externalTrigger
       fprintf('[Edge] Laser will go pew pew, and so should you!');
     else
       % cool down can be faster, given by laser.CoolDownFactor
       nWarmUpSteps = laser.WarmUpTime*laser.CoolDownFactor/laser.WarmUpInterval;
       currentStepSize = laser.current/nWarmUpSteps;
       currentSteps = laser.current:-currentStepSize:0;
-      currentSteps = round(currentSteps*10)/10; %round to one digit
+      currentSteps = round(currentSteps * 10) / 10; %round to one digit
       fprintf('[Edge] Cooling down laser.');
    end
 
-   % prepare workspace waitbar
-   cpb = ConsoleProgressBar();
-   cpb.setLeftMargin(0);
-   cpb.setTopMargin(0);
-   cpb.setLength(30);
-   cpb.setMinimum(1);
-   cpb.setMaximum(length(currentSteps));
-   cpb.setElapsedTimeVisible(1);
-   cpb.setRemainedTimeVisible(1);
-   cpb.setElapsedTimePosition('left');
-   cpb.setRemainedTimePosition('right');
-   cpb.start();
-   % start while loop that steps up/down the laser current
-   iStep = 1;
-   tic;
+   if length(currentSteps) > 1
+            
+      % prepare workspace waitbar
+      cpb = ConsoleProgressBar();
+      cpb.setLeftMargin(0);
+      cpb.setTopMargin(0);
+      cpb.setLength(30);
+      cpb.setMinimum(1);
+      cpb.setMaximum(length(currentSteps));
+      cpb.setElapsedTimeVisible(1);
+      cpb.setRemainedTimeVisible(1);
+      cpb.setElapsedTimePosition('left');
+      cpb.setRemainedTimePosition('right');
+      cpb.start();
+      % start while loop that steps up/down the laser current
+      iStep = 1;
+      tic;
 
-   % temporarily disable warnings as communication during warm up sometimes
-   % failes but never really...
-   s = warning; % save old warning state
-   warning('off');
+      % temporarily disable warnings as communication during warm up sometimes
+      % failes but never really...
+      s = warning; % save old warning state
+      warning('off');
 
-   while (iStep <= length(currentSteps))
-     % set new laser current if WarmUpInterval passed
-     if (toc > laser.WarmUpInterval)
-        laserCurrent = currentSteps(iStep); % only read once
-        laser.current = laserCurrent;
-        dispText = sprintf('%2.1fA/%2.1fA',laserCurrent, laser.MaxWarmUpCurrent);
-        cpb.setValue(iStep);
-        cpb.setText(dispText);
-        tic;
-        iStep = iStep + 1;
-     end
+      while (iStep <= length(currentSteps))
+        % set new laser current if WarmUpInterval passed
+        if (toc > laser.WarmUpInterval)
+           laserCurrent = currentSteps(iStep); % only read once
+           laser.current = laserCurrent;
+           dispText = sprintf('%2.1fA/%2.1fA',laserCurrent, laser.MaxWarmUpCurrent);
+           cpb.setValue(iStep);
+           cpb.setText(dispText);
+           tic;
+           iStep = iStep + 1;
+        end
+      end
+      cpb.stop();
+
+      warning(s); % restore old warning state
    end
-   cpb.stop();
 
-   warning(s); % restore old warning state
 
    if ~doCoolDown % we warmed up the laser
-      laser.WarmUpStatus='[Edge] Warm and cosy, give it your all!';
       laser.isWarmedUp = 1;
       fprintf('[Edge] Laser warm up successful.\n');
    else
-      laser.WarmUpStatus='[Edge] Super cool, you can go home now!';
       laser.isOn = 0;
       laser.isWarmedUp = 0;
       fprintf('[Edge] Laser cool down successful.\n');

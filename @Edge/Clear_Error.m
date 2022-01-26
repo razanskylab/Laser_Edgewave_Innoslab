@@ -1,6 +1,6 @@
 function [] = Clear_Error(laser)
    % laser errors need to be cleared before laser can be turned on
-   fprintf(laser.SerialObj,'%s\n','w97 101'); %clear laser error
+   fprintf(laser.SerialObj, '%s\n',' w97 101'); %clear laser error
    tic;
    noError = true;
    disp('Checking for new errors...')

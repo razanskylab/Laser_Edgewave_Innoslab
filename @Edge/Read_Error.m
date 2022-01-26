@@ -1,22 +1,32 @@
+ % File: Read_Error.m @ Edge
+ % Auhtor: Urs Hofmann
+ % Mail: hofmannu@ethz.ch
+ % Date: 15.06.2021
+
+ % Description: checks if an error occured with the laser
+
 function [] = Read_Error(laser)
    %% read error codes from laser
    % error codes behave different than other commands,
    % which is handled here and in the Clear_Error function
-   fprintf(laser.SerialObj,'%s\n','r90'); %ask for error codes
+   writeline(laser.SerialObj, "r90"); %ask for error codes
 
-   while(~laser.SerialObj.BytesAvailable); %wait for the answer
-       pause(0.01);
+   while(~laser.SerialObj.NumBytesAvailable); %wait for the answer
+      pause(0.01);
    end
 
-   laserAnswer = '';
+   laserAnswer = [];
+   iAns = 1;
+   errorOccured = 0;
    % need to run while loop since more than one error code
    % can be send for one r90 query
-   while(laser.SerialObj.BytesAvailable)
-      laserAnswer = [laserAnswer fscanf(laser.SerialObj,'%s\n') ' '];
+   while(laser.SerialObj.NumBytesAvailable > 0)
+      laserAnswer{iAns} = readline(laser.SerialObj);
+      if isstrprop(laserAnswer{iAns}, 'digit')
+         errorOccured = 1;
+      end
+      iAns = iAns + 1;
    end
-
-   % check if laserAnswer strings contains numbers
-   errorOccured = any(isstrprop(laserAnswer,'digit'));
 
    %if no numbers in laserAnswer string, then no errors...
    if errorOccured

@@ -3,37 +3,31 @@
 % Mail: hofmannu@biomed.ee.ethz.ch
 % Date: 30.04.2019
 
-% Description: chekcs all serial connections to determine on which we have an edge
+% Description: checks serial connections to determine on which we have an edge
 
 function Find_Com_Port(edge)
 
 	portArray = seriallist(); % get all serial devices as a list
-
 	nDevices = length(portArray); % determine number of serial devices
-
 	flagFound = 0; % flag indicating if we found the device already
 
 	for iDevice = 1:nDevices % for each serial port
-
+		disp("test")
 		if (flagFound == 0) % only do this if we did not find edge yet
 			try
-				obj = serial(portArray(iDevice)); % create serial port
-				obj.BaudRate = edge.BAUD_RATE; % set baudrate
-				obj.Terminator = edge.TERMINATOR; % set terminator
-				obj.Timeout = 1; % set timeout to minimum value
-				fopen(obj); % open serial conenction
-				command = 'r01'; % request serial number of laser
-				fprintf(obj, '%s\n', command);
+				obj = serialport(portArray(iDevice), edge.BAUD_RATE, ...
+					"Timeout", 2); % create serial port
+				configureTerminator(obj, edge.TERMINATOR); % set terminator
+				writeline(obj, 'r01');
 				pause(0.1);
-				response = fscanf(obj, '%s\n'); % scan for serial number
+				response = readline(obj) % scan for serial number
 				if strcmp(response(1:4), 'S/N:') % if it starts with S/N: we have an edgewave
 					port_edge = portArray(iDevice);
 					flagFound = 1;
 				end
 			catch ME
-				% do nothing
+				% nothing 
 			end
-			fclose(obj);
 		end
 	
 	end
